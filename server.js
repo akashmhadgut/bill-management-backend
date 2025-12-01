@@ -12,31 +12,51 @@ require("./models/Department");
 require("./models/Bill");
 
 const app = express();
-// configure cors with optional allowed origins (COMMA separated list in ALLOWED_ORIGINS)
-const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*'
-app.use(cors({ origin: allowedOrigins }))
+
+// -------------------- CORS CONFIG --------------------
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map(o => o.trim())
+  : [];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow Postman, Curl, Mobile apps (no origin)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true); // Allowed
+    } else {
+      console.log("❌ CORS BLOCKED:", origin);
+      return callback(new Error("CORS blocked: " + origin), false);
+    }
+  },
+  credentials: true,
+}));
+
+// Body parser
 app.use(express.json());
 
+// -------------------- ROUTES --------------------
 app.get("/", (req, res) => {
   res.send("Bill Management Backend Running");
 });
 
-// health check for monitoring / load balancers
-app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
+app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
-// Routes
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/bills", require("./routes/billRoutes"));
 app.use("/api/departments", require("./routes/departmentRoutes"));
-// app.use("/api/setup", require("./routes/createAdmin"));    //use only once to create admin
+// app.use("/api/setup", require("./routes/createAdmin")); // use only once
 
+// -------------------- SERVER + SOCKET.IO --------------------
 const PORT = process.env.PORT || 5000;
 
-// Create HTTP server and initialize sockets
-const http = require('http').createServer(app)
-const socketUtil = require('./utils/socket')
-const io = socketUtil.init(http, allowedOrigins)
+const http = require("http").createServer(app);
+const socketUtil = require("./utils/socket");
 
-http.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Pass allowedOrigins to Socket.IO
+const io = socketUtil.init(http, allowedOrigins);
 
-// expose io globally to other modules via require('./utils/socket').getIo()
+http.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
+// expose io globally
